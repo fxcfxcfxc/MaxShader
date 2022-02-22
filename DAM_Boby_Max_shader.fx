@@ -6,11 +6,16 @@ string ParamID = "0x003";
 
 //世界矩阵的逆矩阵转置矩阵
 float4x4 WorldITXf : WorldInverseTranspose < string UIWidget="None"; >;
-//MVP矩阵 物体空间-》裁剪空间
+//物体空间-》裁剪空间
 float4x4 WvpXf : WorldViewProjection < string UIWidget="None"; >;
-//世界矩阵
+//物体矩阵：物体空间-》世界矩阵
 float4x4 WorldXf : World < string UIWidget="None"; >;
-//观察矩阵逆矩阵
+//观察矩阵：世界空间-》观察空间
+float3x3 ViewXf : View < string UIWidget="None"; >;
+//投影矩阵：观察空间-》裁剪空间
+float4x4 ProjectionXf : Projection < string UIWidget="None"; >;
+
+//观察矩阵 的逆矩阵
 float4x4 ViewIXf : ViewInverse < string UIWidget="None"; >;
 
 #ifdef _MAX_
@@ -62,23 +67,20 @@ float3 Lamp0Color : Specular <
 #endif
 
 
-//------------------------------------参数
+//------------------------------------参数-----------------------
 int k_test <
-	string UIName = "RGBA";
+	string UIName = "Vertex RGBA";
 	string UIWidget = "slider";
 	float UIMin = 0.0f;
 	float UIMax = 4.0f;
 	
-> = 0; // ambient
+> = 0; 
 
-float4 ShadowCol <
-    string UIName = "Shadow-Color";
-    string UIWidget = "Color";
-> = float4(0.5f, 0.5f, 0.5f, 1.0f);
+
 
 
 float ShadowRange <
-    string UIName = "Shadow-Range";
+    string UIName = "Shadow -> Range";
     string UIWidget = "slider";
     float UIMin = 0.0f;
     float UIMax = 1.0f;
@@ -87,12 +89,12 @@ float ShadowRange <
 
 
 float4 outlineCol <
-    string UIName = "outline-Color";
+    string UIName = "Outline -> Color";
     string UIWidget = "Color";
 > = float4(0.0f, 0.0f, 0.0f, 1.0f);
 
 float outlineSize <
-    string UIName = "outline-Size";
+    string UIName = "Outline -> Size";
     string UIWidget = "slider";
     float UIMin = 0.0f;
     float UIMax = 20.0f;
@@ -100,40 +102,67 @@ float outlineSize <
 > = 1.0f;
 
 bool g_Specluar <
-	string UIName = "Enable Specluar";
+	string UIName = "-------------------Enable Specluar----------------------";
 > = false;
 
-float specluarRange <
-    string UIName = "specluar-Range";
+float specluarStrength <
+    string UIName = "Specluar -> Strength";
     string UIWidget = "slider";
     float UIMin = 0.0f;
-    float UIMax = 50.0f;
+    float UIMax = 5.0f;
     float UIStep = 0.01;
-> = 10.0f;
+> = 1.5f;
+
+
+
+
+bool g_RIM <
+	string UIName = "-------------------Enable RimLight--------------------------------";
+> = false;
+
+float rimStrength <
+    string UIName = "Rim -> Strength";
+    string UIWidget = "slider";
+    float UIMin = 0.0f;
+    float UIMax = 5.0f;
+    float UIStep = 0.01;
+> = 0.2f;
+
+
 
 bool g_OneColor <
-	string UIName = "Enable OneColor";
+	string UIName = "-------------------Enable OneColor----------------------";
 > = true;
 
 
 float4 OneColor <
-    string UIName = "OneColor";
+    string UIName = "One -> Color";
     string UIWidget = "Color";
 > = float4(0.8f, 0.8f, 0.4f, 1.0f);
 
- 
+float4 ShadowCol <
+    string UIName = "Shadow -> Color";
+    string UIWidget = "Color";
+> = float4(0.5f, 0.5f, 0.5f, 1.0f);
+
+
+
+bool g_Texture <
+	string UIName = "-------------------Enable Texture--------------------------------";
+> = true;
 
 
 
 //------------------------纹理申明---------------
 
 Texture2D <float4> g_DiffColorTexture : DiffuseMap< 
-	string UIName = "Diffuse Color";
+	string UIName = "Diffuse Texture";
 	string ResourceType = "2D";
 	int Texcoord = 0;
 	int MapChannel =1;
 	
 >;
+
 
 
 SamplerState g_DiffColorSampler
@@ -144,6 +173,47 @@ SamplerState g_DiffColorSampler
 	AddressU = Wrap;
     AddressV = Wrap;
 };
+
+
+
+Texture2D <float4> g_ILMTexture : DiffuseMap< 
+	string UIName = "ILM Texture";
+	string ResourceType = "2D";
+	int Texcoord = 0;
+	int MapChannel =1;
+	
+>;
+
+
+SamplerState g_ILMSampler
+{
+	MinFilter = Linear;
+	MagFilter = Linear;
+	MipFilter = Linear;
+	AddressU = Wrap;
+    AddressV = Wrap;
+};
+
+
+
+Texture2D <float4> g_SssTexture : DiffuseMap< 
+	string UIName = "SSS Texture";
+	string ResourceType = "2D";
+	int Texcoord = 0;
+	int MapChannel =1;
+	
+>;
+
+
+SamplerState g_SssSampler
+{
+	MinFilter = Linear;
+	MagFilter = Linear;
+	MipFilter = Linear;
+	AddressU = Wrap;
+    AddressV = Wrap;
+};
+
 
 
 //输入结构
@@ -162,7 +232,7 @@ struct appdata {
 	float3 UV4		: TEXCOORD7;
 };
 
-//---光照pass
+//---光照pass1
 //-----------------------------pass1 输出结构----------------------------------
 struct vertexOutput {
     float4 HPosition	: SV_Position;
@@ -215,6 +285,7 @@ vertexOutput std_VS(appdata IN) {
 //-----------------------------pass1 像素着色器--------------------------
 
 float4 std_PS(vertexOutput IN) : SV_Target {
+    //基本数据准备
     float3 diffContrib;
     float3 specContrib;
     float3 lDirWS = normalize(IN.LightVec);
@@ -223,33 +294,52 @@ float4 std_PS(vertexOutput IN) : SV_Target {
     float3 tDirWS = normalize(IN.WorldTangent);
     float3 bDirws = normalize(IN.WorldBinormal);
 	float4 vertColour = float4(IN.UV0.z,IN.UV0.w,IN.UV1.z,IN.UV1.w);	
-	//采样贴图数据
+	//采样贴图数据，ILMTexture R：高光强度（区域）  G：阴影阈值    B：高光形状
     float3 diffColor = g_DiffColorTexture.Sample(g_DiffColorSampler,IN.UV0.xy);
-
+    float3 sssColor = g_SssTexture.Sample(g_SssSampler,IN.UV0.xy);
+    float3 ILMTexColor = g_ILMTexture.Sample(g_ILMSampler,IN.UV0.xy);
+    float specularMask = ILMTexColor.r;
+    float specularShape = ILMTexColor.b;
+    float ilmStepShadow =  ILMTexColor.g;
+    //顶点B ：外描边  ， 顶点R ：AO阈值
     
-    //------------高光--------
+    //-------------------------高光------------------------------------
     float3 hDirWS = normalize(lDirWS+vDirWS);
     float specluar = max(0,dot(nDirWS,hDirWS));
-    float powerSpec = pow(specluar,specluarRange);   
-    float stepSpec = step(0.5,powerSpec);
-    float3 specluarColor = float3(0,0,0);
+    float specluarA   =  specluar - (1 - specluar ) * (1 - specluar)/specularShape;
+    float3 finalspecluar = float3(0,0,0);
     if(g_Specluar)
     {   
-       specluarColor = stepSpec * diffColor;
+       finalspecluar =lerp(0, diffColor * specluarStrength, max(0,specluarA * specularMask));
   
     }
-
-    //---------------shadow------
-    float lambertColor = max(0.0f,dot(lDirWS,nDirWS));
-    float stepColor = step(ShadowRange,lambertColor);
-    float3 ShadowColor = lerp(ShadowCol,1,stepColor);
-    float3 pixelColor = ShadowColor * diffColor.rgb + specluarColor;
+    
+    //------------------------------着色明暗--------------------------------
+    float lambertColor = max(0,dot(lDirWS,nDirWS));
+    float stepShadow = step( ilmStepShadow * ShadowRange,lambertColor* vertColour.r);
+   
+        
+    //------------------------------边缘光------------------------------
+    
+    float baseRim = 1-dot(nDirWS,vDirWS);
+    float baseRimMask = step(0.65,baseRim);
+    float3 baseRimColor = float3(0,0,0);
+    if(g_RIM)
+    {
+        baseRimColor = lerp(0, diffColor, baseRimMask)  * rimStrength;
+    
+    }
+         
+    //-------------------------------颜色合并----------------------------
+    float3 pixelColor = lerp(sssColor *0.8, diffColor, stepShadow) + finalspecluar + baseRimColor;
+    //float3 pixelColor = stepShadow;
     
     if(g_OneColor)
     {
-        pixelColor = lerp(ShadowColor,OneColor,stepColor);
+        pixelColor = lerp(ShadowCol,OneColor,stepShadow);
     }
-          
+    
+           
     if (k_test == 1.0)
 	{
         pixelColor = vertColour.r;
@@ -283,12 +373,12 @@ float4 std_PS(vertexOutput IN) : SV_Target {
 }
 
 
-//---描边pass
-
+//---描边pass0
+ 
 //-----------------------------pass0描边 输出结构-----------------------
 struct outlineOutput
 {
-    float4 HPosition	: SV_Position;
+    float4 posCS : SV_Position;
     
 
 };
@@ -297,15 +387,27 @@ outlineOutput outline_VS(appdata IN)
 {
     
     outlineOutput OUT = (outlineOutput)0;
-    //法线转换到观察空间
- 
-    //
+    //vertex -》 裁剪空间
+    float4 po = float4(IN.Position.xyz,1);
+    OUT.posCS = mul(po,WvpXf);
 
+    //normal: world ->世界空间
+    float3 nDirWS = mul(IN.Normal,WorldITXf).xyz;
 
-    //float3 nDirWS = mul(IN.Normal,WorldITXf).xyz;
-    float4 pos = float4(IN.Position.xyz + IN.Normal * 0.5f * outlineSize,1);
-    
-    OUT.HPosition = mul(pos,WvpXf);
+    //世界空间 ->观察空间
+    float3 nDirVS = mul(nDirWS,ViewXf);
+    //观察 -> 裁剪 -> NDC
+    float4 nDirVS4 = float4(nDirVS,1);
+    float4 nDirCS = normalize(mul(nDirVS4,ProjectionXf));
+
+    //屏幕
+    float4 NearUpperRight = mul(float4(1,1,0,1),ProjectionXf);
+
+    float Aspect = abs(NearUpperRight.y / NearUpperRight.x);
+    nDirCS.x *= Aspect;
+
+   
+    OUT.posCS.xy = OUT.posCS.xy + nDirCS.xy *  outlineSize * 0.1 *IN.Colour.b;   
     return OUT;   
 }
 //-----------------------------pass0描边 像素着色器---------------------
