@@ -77,22 +77,66 @@ int k_test <
 > = 0; 
 
 
+/////////////////////////////////调整颜色
 
 
-float ShadowRange <
-    string UIName = "Shadow -> Range";
+float4 _MainColor <
+    string UIName = "MainColor";
+    string UIWidget = "Color";
+> = float4(1.0f, 1.0f, 1.0f, 1.0f);
+
+
+float4 _ShadowColor <
+    string UIName = "ShadowColor";
+    string UIWidget = "Color";
+> = float4(0.5f, 0.5f, 0.5f, 1.0f);
+
+
+////////////////////////////////第一层高光数据
+
+bool g_specular <
+	string UIName = "-------------------specular--------------------------------";
+> = true;
+
+float _TangentValue <
+    string UIName = "TangentValue";
     string UIWidget = "slider";
     float UIMin = 0.0f;
+    float UIMax = 10.0f;
+    float UIStep = 0.01;
+> = 1.5f;
+
+float4 _specularColor <
+    string UIName = "specularColor1";
+    string UIWidget = "Color";
+> = float4(1.0f, 0.8f, 0.6f, 1.0f);
+
+
+float _specularStrength <
+    string UIName = "specularStrength";
+    string UIWidget = "slider";
+    float UIMin = 0.0f;
+    float UIMax = 500.0f;
+    float UIStep = 0.01;
+> = 70.0f;
+
+
+
+float _Shift1 <
+    string UIName = "Shift1";
+    string UIWidget = "slider";
+    float UIMin = -1.0f;
     float UIMax = 1.0f;
     float UIStep = 0.01;
-> = 0.5f;
+> = -0.5f;
 
 
-float4 outlineCol <
-    string UIName = "Outline -> Color";
-    string UIWidget = "Color";
-> = float4(0.0f, 0.0f, 0.0f, 1.0f);
+bool g_Outline <
+	string UIName = "-------------------Outline--------------------------------";
+> = true;
 
+
+///////////////////////////////////////////////
 float outlineSize <
     string UIName = "Outline -> Size";
     string UIWidget = "slider";
@@ -102,24 +146,12 @@ float outlineSize <
 > = 1.0f;
 
 
-
-
-
-
-bool g_OneColor <
-	string UIName = "-------------------Enable OneColor----------------------";
-> = true;
-
-
-float4 OneColor <
-    string UIName = "One -> Color";
+float4 outlineCol <
+    string UIName = "Outline -> Color";
     string UIWidget = "Color";
-> = float4(0.8f, 0.8f, 0.4f, 1.0f);
+> = float4(0.0f, 0.0f, 0.0f, 1.0f);
 
-float4 ShadowCol <
-    string UIName = "Shadow -> Color";
-    string UIWidget = "Color";
-> = float4(0.5f, 0.5f, 0.5f, 1.0f);
+
 
 
 
@@ -152,10 +184,8 @@ SamplerState g_DiffColorSampler
 
 
 
-
-
-Texture2D <float4> g_SssTexture : DiffuseMap< 
-	string UIName = "SSS Texture";
+Texture2D <float4> g_MaskTexture : DiffuseMap< 
+	string UIName = "Mask Texture";
 	string ResourceType = "2D";
 	int Texcoord = 0;
 	int MapChannel =1;
@@ -163,7 +193,27 @@ Texture2D <float4> g_SssTexture : DiffuseMap<
 >;
 
 
-SamplerState g_SssSampler
+SamplerState g_MaskSampler
+{
+	MinFilter = Linear;
+	MagFilter = Linear;
+	MipFilter = Linear;
+	AddressU = Wrap;
+    AddressV = Wrap;
+};
+
+
+
+Texture2D <float4> g_offsetTexture : DiffuseMap< 
+	string UIName = "offset Texture";
+	string ResourceType = "2D";
+	int Texcoord = 0;
+	int MapChannel =1;
+	
+>;
+
+
+SamplerState g_offsetSampler
 {
 	MinFilter = Linear;
 	MagFilter = Linear;
@@ -190,39 +240,60 @@ struct appdata {
 	float3 UV4		: TEXCOORD7;
 };
 
+
+// funcion：按照法线方向 偏移 Tangent 方向
+float3 ShiftTangent(float3 T,float3 N,float3 shift)
+{
+  return normalize(T + shift *N);
+                
+}
+// funcion： 获取头发高光
+float3 StrandSpecular(float3 T,float3 V,float3 L,float exponent)
+{
+   float3 H = normalize(L+V);//半角向量h
+   float dotTH = dot(T,H);//副切线 和H dot
+   float sinTH = sqrt(1-dotTH * dotTH);//sqrt平方根
+   float dirAtten = smoothstep(-1, 0, dotTH);
+   return dirAtten * pow(sinTH,exponent) * _TangentValue;
+                
+                
+                
+}
+
+            
+
+
 //---光照pass1
 //-----------------------------pass1 输出结构----------------------------------
 struct vertexOutput {
     float4 HPosition	: SV_Position;
     float4 UV0		: TEXCOORD0;
-    // The following values are passed in "World" coordinates since
-    //   it tends to be the most flexible and easy for handling
-    //   reflections, sky lighting, and other "global" effects.
-    float3 LightVec	: TEXCOORD1;
-    float3 WorldNormal	: TEXCOORD2;
-    float3 WorldTangent	: TEXCOORD3;
-    float3 WorldBinormal : TEXCOORD4;
-    float3 WorldView	: TEXCOORD5;
-	float4 UV1		: TEXCOORD6;
-	float4 UV2		: TEXCOORD7;
-	float4 wPos		: TEXCOORD8;
+    float4 UV1      : TEXCOORD1;
+    float3 nDirWS	: TEXCOORD2;
+    float4 TtoW0	: TEXCOORD3;
+    float4 TtoW1    : TEXCOORD4;
+	float4 TtoW2	: TEXCOORD5;
+	float3 posWS	: TEXCOORD6;
 };
+
+
 
 //-----------------------------pass1 顶点着色器---------------------------
 vertexOutput std_VS(appdata IN) {
     vertexOutput OUT = (vertexOutput)0;
-    OUT.WorldNormal = mul(IN.Normal,WorldITXf).xyz;
-    OUT.WorldTangent = mul(IN.Tangent,WorldITXf).xyz;
-    OUT.WorldBinormal = mul(IN.Binormal,WorldITXf).xyz;
+    OUT.nDirWS = mul(IN.Normal,WorldITXf).xyz;
+    float3 tDirWS = mul(IN.Tangent,WorldITXf).xyz;
+    float3 bDirWS = mul(IN.Binormal,WorldITXf).xyz;
     float4 Po = float4(IN.Position.xyz,1);
     float3 Pw = mul(Po,WorldXf).xyz;
-    OUT.LightVec = (Lamp0Pos - Pw);
-    OUT.WorldView = normalize(ViewIXf[3].xyz - Pw);
     OUT.HPosition = mul(Po,WvpXf);
-	OUT.wPos = mul(IN.Position, WorldXf);
+	OUT.posWS = mul(IN.Position, WorldXf);
 	
-// UV bindings
-// Encode the color data
+	
+	OUT.TtoW0 = float4(tDirWS.x, bDirWS.x, OUT.nDirWS.x, OUT.posWS.x);
+    OUT.TtoW1 = float4(tDirWS.y, bDirWS.y, OUT.nDirWS.y, OUT.posWS.y);
+    OUT.TtoW2 = float4(tDirWS.z, bDirWS.z, OUT.nDirWS.z, OUT.posWS.z);
+	
  	float4 colour;
    	colour.rgb = IN.Colour * IN.Illum;
    	colour.a = IN.Alpha.x;
@@ -231,56 +302,70 @@ vertexOutput std_VS(appdata IN) {
   	OUT.UV1.z = colour.b;
    	OUT.UV1.a = colour.a;
 
-// Pass through the UVs
+
 	OUT.UV0.xy = IN.UV0.xy;
    	OUT.UV1.xy = IN.UV1.xy;
-   	OUT.UV2.xyz = IN.UV2.xyz;
-// 	OUT.UV3 = OUT.UV3;
-// 	OUT.UV4 = OUT.UV4;
+
     return OUT;
 }
+
+
 
 //-----------------------------pass1 像素着色器--------------------------
 
 float4 std_PS(vertexOutput IN) : SV_Target {
-    //基本数据准备
+    //准备基本数据
     float3 diffContrib;
     float3 specContrib;
-    float3 lDirWS = normalize(IN.LightVec);
-    float3 vDirWS = normalize(IN.WorldView);//观察（相机）方向
-    float3 nDirWS = normalize(IN.WorldNormal);
-    float3 tDirWS = normalize(IN.WorldTangent);
-    float3 bDirws = normalize(IN.WorldBinormal);
-	float4 vertColour = float4(IN.UV0.z,IN.UV0.w,IN.UV1.z,IN.UV1.w);	
-	//采样贴图数据，ILMTexture R：高光强度（区域）  G：阴影阈值    B：高光形状
-    float3 diffColor = g_DiffColorTexture.Sample(g_DiffColorSampler,IN.UV0.xy);
-    float3 sssColor = g_SssTexture.Sample(g_SssSampler,IN.UV0.xy);
-    float2 filpUV = float2(-IN.UV0.x,IN.UV0.y);
-    float3 filpSssColor = g_SssTexture.Sample(g_SssSampler,filpUV);
-    //顶点B ：外描边  ， 顶点R ：AO阈值
+    float3 lDirWS = normalize(Lamp0Pos -IN.posWS);
+    float3 vDirWS = normalize(ViewIXf[3].xyz - IN.posWS);
+    float3 nDirWS = normalize(IN.nDirWS);
     
-    float3 upVec = float3(0,0,1);
-    float3 frontVec = float3(0,-1,0);
-    float3 rightVec = float3(1,0,0);
-
-    float changeShadowTex = dot(lDirWS.xy,rightVec);
-    float3 faceShadow = step(0,changeShadowTex) * sssColor + step(changeShadowTex,0) * filpSssColor;
-
-    float shadowYZ = 1- (dot(lDirWS.xy,frontVec)*0.5 +0.5);
-
-    float stepShadow =  step(shadowYZ,faceShadow);
-    float3 faceColor  = lerp(diffColor * 0.5 ,diffColor,stepShadow);
-
-    //-------------------------------颜色合并----------------------------
-    float3 pixelColor = faceColor;
-    if(g_OneColor)
-    {
-        pixelColor = lerp(ShadowCol,OneColor,stepShadow);
-
-    }
-
+    //构建新的T,B
+    float3 posWS = float3(IN.TtoW0.w, IN.TtoW1.w, IN.TtoW2.w);   
+    float3 tDirWS = normalize(float3(IN.TtoW0.x, IN.TtoW1.x, IN.TtoW2.x));
+    float3 bDirWS = normalize(float3(IN.TtoW0.y, IN.TtoW1.y, IN.TtoW2.y));
     
-           
+	float4 vertColour = float4(IN.UV0.z,IN.UV0.w,IN.UV1.z,IN.UV1.w);
+		
+	float3 hDirWS = normalize(vDirWS + lDirWS);	
+	float nDotl = saturate(dot(nDirWS,lDirWS));
+	float nDotv = saturate(dot(nDirWS,vDirWS));	
+	
+	//准备纹理数据
+    float3 diffTexColor = g_DiffColorTexture.Sample(g_DiffColorSampler,IN.UV0.xy);
+    float3 offsetTexColor = g_offsetTexture.Sample(g_offsetSampler,IN.UV0.xy);
+    float3 MaskTexColor = g_MaskTexture.Sample(g_MaskSampler,IN.UV0.xy);
+    
+    
+    //-------------------------明暗漫反射
+    //明暗
+    float aoMask = MaskTexColor.g;
+    float shadow = lerp(-0.8, 1, nDotl * aoMask *2);
+    float shadowMod = pow(saturate(shadow),0.25);
+    
+    //颜色
+    float3 diffuse = lerp(_ShadowColor,diffTexColor * _MainColor,shadowMod);
+
+    //-----------------------各向异性高光
+    //切线偏移方向强度
+    float offsetT = offsetTexColor.g;
+    float3 t1 = ShiftTangent(bDirWS,nDirWS,_Shift1 + offsetT);
+        
+    //计算高光
+    float3 spec1 = StrandSpecular(t1,vDirWS,lDirWS,_specularStrength) *_specularColor;
+
+    //高光遮罩范围限制
+    float specularMask = MaskTexColor.b;
+    float3 spec1Mod = spec1 * nDotl * specularMask;
+    
+    //float phone = dot()
+
+    //-------------------------------------输出
+    //合并颜色
+    float3 merge = diffuse +  spec1Mod;
+    float3 pixelColor = spec1;   
+
     if (k_test == 1.0)
 	{
         pixelColor = vertColour.r;
@@ -331,9 +416,8 @@ outlineOutput outline_VS(appdata IN)
     //vertex -》 裁剪空间
     float4 po = float4(IN.Position.xyz,1);
     OUT.posCS = mul(po,WvpXf);
-    
-    
- //normal: world ->世界空间
+
+    //normal: world ->世界空间
     float3 nDirWS = mul(IN.Normal,WorldITXf).xyz;
 
     //世界空间 ->观察空间
@@ -349,14 +433,12 @@ outlineOutput outline_VS(appdata IN)
     nDirCS.x *= Aspect;
 
    
-    OUT.posCS.xy = OUT.posCS.xy + nDirCS.xy *  outlineSize * 0.1 *IN.Colour.b;
-   
+    OUT.posCS.xy = OUT.posCS.xy + nDirCS.xy *  outlineSize * 0.1 *IN.Colour.b;   
     return OUT;   
 }
 //-----------------------------pass0描边 像素着色器---------------------
 float4 outline_PS(outlineOutput IN) : SV_Target
-{   
-    
+{
     return outlineCol;
 
 }
