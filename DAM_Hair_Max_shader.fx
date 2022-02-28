@@ -26,6 +26,7 @@ int texcoord1 : Texcoord
 	string UIWidget = "None";
 >;
 
+
 int texcoord2 : Texcoord
 <
 	int Texcoord = 2;
@@ -67,7 +68,7 @@ float3 Lamp0Color : Specular <
 #endif
 
 
-//------------------------------------参数-----------------------
+//--------------------------------------------全局变量参数----------------------------------
 int k_test <
 	string UIName = "Vertex RGBA";
 	string UIWidget = "slider";
@@ -89,7 +90,7 @@ float4 _MainColor <
 float4 _ShadowColor <
     string UIName = "ShadowColor";
     string UIWidget = "Color";
-> = float4(0.5f, 0.5f, 0.5f, 1.0f);
+> = float4(0.35f, 0.35f, 0.5f, 1.0f);
 
 
 ////////////////////////////////第一层高光数据
@@ -104,7 +105,7 @@ float _TangentValue <
     float UIMin = 0.0f;
     float UIMax = 10.0f;
     float UIStep = 0.01;
-> = 1.5f;
+> = 0.6f;
 
 float4 _specularColor <
     string UIName = "specularColor1";
@@ -118,17 +119,17 @@ float _specularStrength <
     float UIMin = 0.0f;
     float UIMax = 500.0f;
     float UIStep = 0.01;
-> = 70.0f;
+> = 250.0f;
 
 
 
 float _Shift1 <
     string UIName = "Shift1";
     string UIWidget = "slider";
-    float UIMin = -1.0f;
-    float UIMax = 1.0f;
+    float UIMin = -3.0f;
+    float UIMax = 3.0f;
     float UIStep = 0.01;
-> = -0.5f;
+> = -0.99f;
 
 
 bool g_Outline <
@@ -136,7 +137,7 @@ bool g_Outline <
 > = true;
 
 
-///////////////////////////////////////////////
+///////////////////////////////描边
 float outlineSize <
     string UIName = "Outline -> Size";
     string UIWidget = "slider";
@@ -161,7 +162,7 @@ bool g_Texture <
 
 
 
-//------------------------纹理申明---------------
+//-----------------------------------------------纹理申明---------------------------
 
 Texture2D <float4> g_DiffColorTexture : DiffuseMap< 
 	string UIName = "Diffuse Texture";
@@ -223,24 +224,7 @@ SamplerState g_offsetSampler
 };
 
 
-
-//输入结构
-struct appdata {
-	float4 Position		: POSITION;
-	float3 Normal		: NORMAL;
-	float3 Tangent		: TANGENT;
-	float3 Binormal		: BINORMAL;
-	float2 UV0		: TEXCOORD0;	
-	float3 Colour		: TEXCOORD1;
-	float3 Alpha		: TEXCOORD2;
-	float3 Illum		: TEXCOORD3;
-	float3 UV1		: TEXCOORD4;
-	float3 UV2		: TEXCOORD5;
-	float3 UV3		: TEXCOORD6;
-	float3 UV4		: TEXCOORD7;
-};
-
-
+//------------------------------------------------函数---------------------------------
 // funcion：按照法线方向 偏移 Tangent 方向
 float3 ShiftTangent(float3 T,float3 N,float3 shift)
 {
@@ -260,11 +244,24 @@ float3 StrandSpecular(float3 T,float3 V,float3 L,float exponent)
                 
 }
 
-            
+
+//-------------------------------------------输入结构------------------------------------
+struct appdata {
+	float4 Position		: POSITION;
+	float3 Normal		: NORMAL;
+	float3 Tangent		: TANGENT;
+	float3 Binormal		: BINORMAL;
+	float2 UV0		    : TEXCOORD0;	
+	float3 Colour		: TEXCOORD1;
+	float3 Alpha		: TEXCOORD2;
+	float3 Illum		: TEXCOORD3;
+	float3 UV1		    : TEXCOORD4;
+
+};
 
 
-//---光照pass1
-//-----------------------------pass1 输出结构----------------------------------
+//-------------------------------------------光照pass1--------------------------------
+//-----------------------------pass1 输出结构
 struct vertexOutput {
     float4 HPosition	: SV_Position;
     float4 UV0		: TEXCOORD0;
@@ -278,17 +275,20 @@ struct vertexOutput {
 
 
 
-//-----------------------------pass1 顶点着色器---------------------------
+//-----------------------------pass1 顶点着色器
 vertexOutput std_VS(appdata IN) {
     vertexOutput OUT = (vertexOutput)0;
     OUT.nDirWS = mul(IN.Normal,WorldITXf).xyz;
-    float3 tDirWS = mul(IN.Tangent,WorldITXf).xyz;
-    float3 bDirWS = mul(IN.Binormal,WorldITXf).xyz;
+    //float3 tDirWS = mul(IN.Tangent,WorldITXf).xyz;
+    //float3 bDirWS = mul(IN.Binormal,WorldITXf).xyz;
     float4 Po = float4(IN.Position.xyz,1);
     float3 Pw = mul(Po,WorldXf).xyz;
     OUT.HPosition = mul(Po,WvpXf);
 	OUT.posWS = mul(IN.Position, WorldXf);
 	
+	//顶点色与切线副切线 语义有冲突模型如果有顶点色，就会影响，暂时只试出来这样自己算一下切线数据，看起来效果没问题
+	float3 tDirWS = cross(IN.Normal,Pw).xyz;
+    float3 bDirWS = cross(IN.Normal,tDirWS).xyz;
 	
 	OUT.TtoW0 = float4(tDirWS.x, bDirWS.x, OUT.nDirWS.x, OUT.posWS.x);
     OUT.TtoW1 = float4(tDirWS.y, bDirWS.y, OUT.nDirWS.y, OUT.posWS.y);
@@ -296,7 +296,9 @@ vertexOutput std_VS(appdata IN) {
 	
  	float4 colour;
    	colour.rgb = IN.Colour * IN.Illum;
+ 
    	colour.a = IN.Alpha.x;
+
    	OUT.UV0.z = colour.r;
    	OUT.UV0.a = colour.g;
   	OUT.UV1.z = colour.b;
@@ -311,7 +313,9 @@ vertexOutput std_VS(appdata IN) {
 
 
 
-//-----------------------------pass1 像素着色器--------------------------
+
+
+//-----------------------------pass1 像素着色器
 
 float4 std_PS(vertexOutput IN) : SV_Target {
     //准备基本数据
@@ -358,13 +362,12 @@ float4 std_PS(vertexOutput IN) : SV_Target {
     //高光遮罩范围限制
     float specularMask = MaskTexColor.b;
     float3 spec1Mod = spec1 * nDotl * specularMask;
-    
-    //float phone = dot()
+ 
 
     //-------------------------------------输出
     //合并颜色
     float3 merge = diffuse +  spec1Mod;
-    float3 pixelColor = spec1;   
+    float3 pixelColor = merge;   
 
     if (k_test == 1.0)
 	{
@@ -399,16 +402,16 @@ float4 std_PS(vertexOutput IN) : SV_Target {
 }
 
 
-//---描边pass0
+//---------------------------------------描边pass0-------------------------------------
  
-//-----------------------------pass0描边 输出结构-----------------------
+//-----------------------------pass0描边 输出结构
 struct outlineOutput
 {
     float4 posCS : SV_Position;
     
 
 };
-//-----------------------------pass0描边 顶点色器-----------------------
+//-----------------------------pass0描边 顶点色器
 outlineOutput outline_VS(appdata IN)
 {
     
@@ -436,13 +439,13 @@ outlineOutput outline_VS(appdata IN)
     OUT.posCS.xy = OUT.posCS.xy + nDirCS.xy *  outlineSize * 0.1 *IN.Colour.b;   
     return OUT;   
 }
-//-----------------------------pass0描边 像素着色器---------------------
+//-----------------------------pass0描边 像素着色器
 float4 outline_PS(outlineOutput IN) : SV_Target
 {
     return outlineCol;
 
 }
-//--------------------------------pass 相关标签设置-----------------------
+//--------------------------------pass 相关渲染标签设置------------------------------------
 
 
 RasterizerState RS_CullFront
