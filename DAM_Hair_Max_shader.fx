@@ -1,8 +1,11 @@
-
+/*
+基于max版本：2022编写，其他版本未测试
+顶点色与切线副切线存在数据干扰，目前只能通过手动计算切线方式避免问题
+*/
 string ParamID = "0x003";
 
 
-//// UN-TWEAKABLES - AUTOMATICALLY-TRACKED TRANSFORMS ////////////////
+//----------------------------------------------变换矩阵（自动）-------------------
 
 //世界矩阵的逆矩阵转置矩阵
 float4x4 WorldITXf : WorldInverseTranspose < string UIWidget="None"; >;
@@ -10,6 +13,8 @@ float4x4 WorldITXf : WorldInverseTranspose < string UIWidget="None"; >;
 float4x4 WvpXf : WorldViewProjection < string UIWidget="None"; >;
 //物体矩阵：物体空间-》世界矩阵
 float4x4 WorldXf : World < string UIWidget="None"; >;
+
+float4x4 WorldIXf : WorldInverse < string UIWidget="None"; >;
 //观察矩阵：世界空间-》观察空间
 float3x3 ViewXf : View < string UIWidget="None"; >;
 //投影矩阵：观察空间-》裁剪空间
@@ -18,6 +23,8 @@ float4x4 ProjectionXf : Projection < string UIWidget="None"; >;
 //观察矩阵 的逆矩阵
 float4x4 ViewIXf : ViewInverse < string UIWidget="None"; >;
 
+
+//-------------------------------max中mapchannl  映射--------------------------
 #ifdef _MAX_
 int texcoord1 : Texcoord
 <
@@ -42,9 +49,7 @@ int texcoord3 : Texcoord
 >;
 #endif
 
-//// TWEAKABLE PARAMETERS ////////////////////
-
-/// Point Lamp 0 ////////////
+///--------------------灯光参数-----------------
 float3 Lamp0Pos : POSITION <
     string Object = "PointLight0";
     string UIName =  "Light Position";
@@ -75,7 +80,7 @@ int k_test <
 	float UIMin = 0.0f;
 	float UIMax = 4.0f;
 	
-> = 0; 
+> = 0;
 
 
 /////////////////////////////////调整颜色
@@ -224,7 +229,7 @@ SamplerState g_offsetSampler
 };
 
 
-//------------------------------------------------函数---------------------------------
+////------------------------------------------------函数---------------------------------////
 // funcion：按照法线方向 偏移 Tangent 方向
 float3 ShiftTangent(float3 T,float3 N,float3 shift)
 {
@@ -245,7 +250,7 @@ float3 StrandSpecular(float3 T,float3 V,float3 L,float exponent)
 }
 
 
-//-------------------------------------------输入结构------------------------------------
+////-------------------------------------------输入结构------------------------------------////
 struct appdata {
 	float4 Position		: POSITION;
 	float3 Normal		: NORMAL;
@@ -260,7 +265,7 @@ struct appdata {
 };
 
 
-//-------------------------------------------光照pass1--------------------------------
+////-------------------------------------------光照pass1--------------------------------////
 //-----------------------------pass1 输出结构
 struct vertexOutput {
     float4 HPosition	: SV_Position;
@@ -273,13 +278,11 @@ struct vertexOutput {
 	float3 posWS	: TEXCOORD6;
 };
 
-
-
 //-----------------------------pass1 顶点着色器
 vertexOutput std_VS(appdata IN) {
     vertexOutput OUT = (vertexOutput)0;
     OUT.nDirWS = mul(IN.Normal,WorldITXf).xyz;
-    //float3 tDirWS = mul(IN.Tangent,WorldITXf).xyz;
+   // float3 tDirWS = mul(IN.Tangent,WorldXf).xyz;
     //float3 bDirWS = mul(IN.Binormal,WorldITXf).xyz;
     float4 Po = float4(IN.Position.xyz,1);
     float3 Pw = mul(Po,WorldXf).xyz;
@@ -288,7 +291,7 @@ vertexOutput std_VS(appdata IN) {
 	
 	//顶点色与切线副切线 语义有冲突模型如果有顶点色，就会影响，暂时只试出来这样自己算一下切线数据，看起来效果没问题
 	float3 tDirWS = cross(IN.Normal,Pw).xyz;
-    float3 bDirWS = cross(IN.Normal,tDirWS).xyz;
+    float3 bDirWS = mul(cross(IN.Normal,tDirWS), WorldIXf).xyz;
 	
 	OUT.TtoW0 = float4(tDirWS.x, bDirWS.x, OUT.nDirWS.x, OUT.posWS.x);
     OUT.TtoW1 = float4(tDirWS.y, bDirWS.y, OUT.nDirWS.y, OUT.posWS.y);
@@ -310,10 +313,6 @@ vertexOutput std_VS(appdata IN) {
 
     return OUT;
 }
-
-
-
-
 
 //-----------------------------pass1 像素着色器
 
@@ -367,7 +366,7 @@ float4 std_PS(vertexOutput IN) : SV_Target {
     //-------------------------------------输出
     //合并颜色
     float3 merge = diffuse +  spec1Mod;
-    float3 pixelColor = merge;   
+    float3 pixelColor = spec1;   
 
     if (k_test == 1.0)
 	{
@@ -402,7 +401,7 @@ float4 std_PS(vertexOutput IN) : SV_Target {
 }
 
 
-//---------------------------------------描边pass0-------------------------------------
+////---------------------------------------描边pass0-------------------------------------////
  
 //-----------------------------pass0描边 输出结构
 struct outlineOutput
@@ -445,7 +444,7 @@ float4 outline_PS(outlineOutput IN) : SV_Target
     return outlineCol;
 
 }
-//--------------------------------pass 相关渲染标签设置------------------------------------
+////-------------------------------------pass 相关渲染标签设置------------------------------------////
 
 
 RasterizerState RS_CullFront
@@ -459,7 +458,7 @@ RasterizerState RS_CullBack
 };
 
 
-//----------------------------设置双PASS------------------------------
+////----------------------------设置双PASS------------------------------////
 fxgroup dx11
 {
 technique11 Main_11 <
@@ -508,4 +507,4 @@ technique10 Main_10 <
     
 }
 }
-/////////////////////////////////////// eof //
+
