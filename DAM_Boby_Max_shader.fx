@@ -72,7 +72,7 @@ int k_test <
 	string UIName = "Vertex RGBA";
 	string UIWidget = "slider";
 	float UIMin = 0.0f;
-	float UIMax = 4.0f;
+	float UIMax = 5.0f;
 	
 > = 0; 
 
@@ -361,6 +361,13 @@ float4 std_PS(vertexOutput IN) : SV_Target {
 	
         pixelColor = vertColour.a;
     }
+
+    
+    if (k_test == 5.0)
+	{
+
+        pixelColor = vertColour.rgb;
+    }
     
     if (k_test == 0.0)
     {
@@ -407,7 +414,7 @@ outlineOutput outline_VS(appdata IN)
     nDirCS.x *= Aspect;
 
    
-    OUT.posCS.xy = OUT.posCS.xy + nDirCS.xy *  outlineSize * 0.1 *IN.Colour.b;   
+    OUT.posCS.xy = OUT.posCS.xy + nDirCS.xy *  outlineSize * 0.1 *IN.Colour.r;   
     return OUT;   
 }
 //-----------------------------pass0描边 像素着色器---------------------

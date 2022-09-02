@@ -137,6 +137,16 @@ float _Shift1 <
 > = -0.99f;
 
 
+
+float _SpecularOffsetA <
+    string UIName = "SpecularOffsetA";
+    string UIWidget = "slider";
+    float UIMin = 0.0f;
+    float UIMax = 1.0f;
+    float UIStep = 0.01;
+> = 0.5f;
+
+
 bool g_Outline <
 	string UIName = "-------------------Outline--------------------------------";
 > = true;
@@ -295,10 +305,10 @@ vertexOutput std_VS(appdata IN) {
 	OUT.posWS = mul(IN.Position, WorldXf);
 	
 	//顶点色与切线副切线 语义有冲突模型如果有顶点色，就会影响，暂时只试出来这样自己算一下切线数据，看起来效果没问题
-	float3 tDirWS = cross(IN.Normal,Pw).xyz;
-    float3 bDirWS = mul(cross(IN.Normal,tDirWS), WorldIXf).xyz;
-    //float3 bDirWS = mul(cross(tDirWS,tDirWS), WorldIXf).xyz;
-    //float3 bDirWS = IN.Binormal;
+	float3 tDirWS = mul(IN.Tangent,WorldITXf).xyz;
+    //float3 bDirWS = mul(IN.Binormal,WorldITXf).xyz;
+    //float3 bDirWS = mul(cross(OUT.nDirWS,tDirWS), WorldIXf).xyz;
+    float3 bDirWS = IN.Binormal;
 	
 
 	OUT.TtoW0 = float4(tDirWS.x, bDirWS.x, OUT.nDirWS.x, OUT.posWS.x);
@@ -365,7 +375,7 @@ float4 std_PS(vertexOutput IN) : SV_Target {
 
     //-----------------------各向异性高光------------------------------------//
     //切线偏移方向强度
-    float offsetT = offsetTexColor.g;
+    float offsetT = lerp(0,_SpecularOffsetA ,offsetTexColor.g);
     float3 t1 = ShiftTangent(bDirWS,nDirWS,_Shift1 + offsetT);
         
     //高光权重

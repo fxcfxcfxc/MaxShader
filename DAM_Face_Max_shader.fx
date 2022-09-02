@@ -72,7 +72,7 @@ int k_test <
 	string UIName = "Vertex RGBA";
 	string UIWidget = "slider";
 	float UIMin = 0.0f;
-	float UIMax = 4.0f;
+	float UIMax = 5.0f;
 	
 > = 0; 
 
@@ -123,6 +123,15 @@ float4 ShadowCol <
 
 
 
+
+float4 FaceShadowCol <
+    string UIName = "FaceShadow -> Color";
+    string UIWidget = "Color";
+> = float4(0.5f, 0.5f, 0.5f, 1.0f);
+
+
+
+
 bool g_Texture <
 	string UIName = "-------------------Enable Texture--------------------------------";
 > = true;
@@ -155,7 +164,7 @@ SamplerState g_DiffColorSampler
 
 
 Texture2D <float4> g_SssTexture : DiffuseMap< 
-	string UIName = "SSS Texture";
+	string UIName = "Light Texture";
 	string ResourceType = "2D";
 	int Texcoord = 0;
 	int MapChannel =1;
@@ -269,7 +278,7 @@ float4 std_PS(vertexOutput IN) : SV_Target {
     float shadowYZ = 1- (dot(lDirWS.xy,frontVec)*0.5 +0.5);
 
     float stepShadow =  step(shadowYZ,faceShadow);
-    float3 faceColor  = lerp(diffColor * 0.5 ,diffColor,stepShadow);
+    float3 faceColor  = lerp(diffColor * FaceShadowCol ,diffColor,stepShadow);
 
     //-------------------------------颜色合并----------------------------
     float3 pixelColor = faceColor;
@@ -301,6 +310,12 @@ float4 std_PS(vertexOutput IN) : SV_Target {
 	{
 	
         pixelColor = vertColour.a;
+    }
+
+    if (k_test == 5.0)
+	{
+
+        pixelColor = vertColour.rgb;
     }
     
     if (k_test == 0.0)
@@ -349,7 +364,7 @@ outlineOutput outline_VS(appdata IN)
     nDirCS.x *= Aspect;
 
    
-    OUT.posCS.xy = OUT.posCS.xy + nDirCS.xy *  outlineSize * 0.1 *IN.Colour.b;
+    OUT.posCS.xy = OUT.posCS.xy + nDirCS.xy *  outlineSize * 0.1 * IN.Colour.r;
    
     return OUT;   
 }
