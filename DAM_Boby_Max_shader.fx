@@ -303,7 +303,7 @@ float4 std_PS(vertexOutput IN) : SV_Target {
     float ilmStepShadow =  ILMTexColor.g;
     //顶点B ：外描边  ， 顶点R ：AO阈值
     
-    //-------------------------高光------------------------------------
+    //-------------------------高光------------------------------------//
     float3 hDirWS = normalize(lDirWS+vDirWS);
     float specluar = max(0,dot(nDirWS,hDirWS));
     float specluarA   =  specluar - (1 - specluar ) * (1 - specluar)/specularShape;
@@ -314,12 +314,13 @@ float4 std_PS(vertexOutput IN) : SV_Target {
   
     }
     
-    //------------------------------着色明暗--------------------------------
+    //------------------------------漫反射--------------------------------//
     float lambertColor = max(0,dot(lDirWS,nDirWS));
     float stepShadow = step( ilmStepShadow * ShadowRange,lambertColor* vertColour.r);
    
+    
         
-    //------------------------------边缘光------------------------------
+    //------------------------------边缘光------------------------------//
     
     float baseRim = 1-dot(nDirWS,vDirWS);
     float baseRimMask = step(0.65,baseRim);
@@ -330,7 +331,7 @@ float4 std_PS(vertexOutput IN) : SV_Target {
     
     }
          
-    //-------------------------------颜色合并----------------------------
+    //-------------------------------颜色合并----------------------------//
     float3 pixelColor = lerp(sssColor *0.8, diffColor, stepShadow) + finalspecluar + baseRimColor;
     //float3 pixelColor = stepShadow;
     
